@@ -67,22 +67,22 @@ crawlforge/
 
 **Language**
 
-* Python
+- Python
 
 **Networking**
 
-* httpx
+- httpx
 
 **HTML Parsing**
 
-* BeautifulSoup
+- BeautifulSoup
 
 **Planned Infrastructure**
 
-* Redis (URL frontier / queue)
-* PostgreSQL (content storage)
-* FastAPI (search API)
-* Docker (containerization)
+- Redis (URL frontier / queue)
+- PostgreSQL (content storage)
+- FastAPI (search API)
+- Docker (containerization)
 
 ---
 
@@ -113,18 +113,17 @@ uv run python src/crawlforge/main.py
 
 Planned improvements include:
 
-* asynchronous crawling with `aiohttp`
-* Redis-based distributed URL scheduling
-* global deduplication system
-* domain-aware rate limiting
-* content storage in PostgreSQL
-* vector embeddings for semantic search
-* FastAPI search interface
-* Docker-based distributed deployment
+- asynchronous crawling with `aiohttp`
+- Redis-based distributed URL scheduling
+- global deduplication system
+- domain-aware rate limiting
+- content storage in PostgreSQL
+- vector embeddings for semantic search
+- FastAPI search interface
+- Docker-based distributed deployment
 
 ---
 
 ## License
 
 MIT License
-

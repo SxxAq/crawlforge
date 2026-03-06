@@ -1,8 +1,9 @@
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-def extract_links(base_url:str,html:str)->list[str]:
-  """
+
+def extract_links(base_url: str, html: str) -> list[str]:
+    """
     Extract all links from the HTML content.
 
     Args:
@@ -12,15 +13,16 @@ def extract_links(base_url:str,html:str)->list[str]:
     Returns:
         list[str]: A list of extracted links.
     """
-  soup = BeautifulSoup(html, "html.parser")
-  links = []
-  for tag in soup.find_all("a", href=True):
-    full_url = urljoin(base_url, tag["href"])
-    links.append(full_url)
-  return links
+    soup = BeautifulSoup(html, "html.parser")
+    links = []
+    for tag in soup.find_all("a", href=True):
+        full_url = urljoin(base_url, tag["href"])
+        links.append(full_url)
+    return links
 
-def extract_title(html:str)->str|None:
-  """
+
+def extract_title(html: str) -> str | None:
+    """
     Extract the title from the HTML content.
 
     Args:
@@ -29,6 +31,6 @@ def extract_title(html:str)->str|None:
     Returns:
         str|None: The extracted title or None if not found.
     """
-  soup = BeautifulSoup(html, "html.parser")
-  title_tag = soup.find("title")
-  return title_tag.string if title_tag else None
+    soup = BeautifulSoup(html, "html.parser")
+    title_tag = soup.find("title")
+    return title_tag.string if title_tag else None
