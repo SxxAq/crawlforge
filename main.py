@@ -1,5 +1,8 @@
+from src.crawlforge.main import crawl
+
 def main():
-    print("Hello from crawlforge!")
+    # Example usage - replace with your actual seed URL
+    crawl("https://example.com")
 
 
 if __name__ == "__main__":
