@@ -6,33 +6,54 @@ from crawlforge.parser.html_parser import extract_links, extract_title
 from crawlforge.utils.url_utils import normalize_url, get_domain
 
 
-async def worker(name, session, queue, visited, allowed_domain, max_pages):
-    while True:
-        if len(visited) >= max_pages:
-            return
-        url = await queue.get()
-        url = normalize_url(url)
-        if url in visited:
-            queue.task_done()
+async def worker(
+    name, session, queue, visited, visited_lock, allowed_domain, max_pages, stop_event
+):
+    while not stop_event.is_set():
+        try:
+            url = await asyncio.wait_for(queue.get(), timeout=1.0)
+        except asyncio.TimeoutError:
             continue
-        if get_domain(url) != allowed_domain:
+
+        try:
+            url = normalize_url(url)
+
+            # Thread-safe check and add to visited
+            async with visited_lock:
+                if url in visited or len(visited) >= max_pages:
+                    queue.task_done()
+                    continue
+                visited.add(url)
+
+            if get_domain(url) != allowed_domain:
+                queue.task_done()
+                continue
+
+            print(f"[{name}] Crawling: {url}")
+            html = await fetch(session, url)
+            if not html:
+                queue.task_done()
+                continue
+
+            title = extract_title(html)
+            print(f"\n[{name}] Title: {title}")
+
+            async with visited_lock:
+                print(f"\n[{name}] Visited: {len(visited)} pages")
+
+            links = extract_links(url, html)
+            for link in links:
+                normalized = normalize_url(link)
+                async with visited_lock:
+                    if normalized not in visited and len(visited) < max_pages:
+                        await queue.put(normalized)
+
             queue.task_done()
-            continue
-        print(f"[{name}] Crawling: {url}")
-        html = await fetch(session, url)
-        if not html:
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[{name}] Error: {e}")
             queue.task_done()
-            continue
-        visited.add(url)
-        title = extract_title(html)
-        print(f"\n[{name}] Title: {title}")
-        print(f"\n[{name}] Visited: {len(visited)} pages")
-        links = extract_links(url, html)
-        for link in links:
-            normalized = normalize_url(link)
-            if normalized not in visited:
-                await queue.put(normalized)
-        queue.task_done()
 
 
 async def crawl(seed_url: str, max_pages: int = 20, workers: int = 5):
@@ -52,21 +73,34 @@ async def crawl(seed_url: str, max_pages: int = 20, workers: int = 5):
     queue = asyncio.Queue()
     await queue.put(seed_url)
     visited = set()
+    visited_lock = asyncio.Lock()
+    stop_event = asyncio.Event()
+
     async with aiohttp.ClientSession() as session:
 
         tasks = []
         for i in range(workers):
             task = asyncio.create_task(
                 worker(
-                    f"Worker-{i+1}", session, queue, visited, allowed_domain, max_pages
+                    f"Worker-{i+1}",
+                    session,
+                    queue,
+                    visited,
+                    visited_lock,
+                    allowed_domain,
+                    max_pages,
+                    stop_event,
                 )
             )
             tasks.append(task)
 
         await queue.join()
 
-        for task in tasks:
-            task.cancel()
+        # Signal workers to stop gracefully
+        stop_event.set()
+
+        # Wait for all workers to finish
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":
