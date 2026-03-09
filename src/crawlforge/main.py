@@ -1,9 +1,12 @@
+import asyncio
+import aiohttp
+
 from crawlforge.crawler.fetcher import fetch
 from crawlforge.parser.html_parser import extract_links, extract_title
-from crawlforge.utils.url_utils import normalize_url, get_domain, is_same_domain
+from crawlforge.utils.url_utils import normalize_url, get_domain
 
 
-def crawl(seed_url: str, max_pages: int = 20):
+async def crawl(seed_url: str, max_pages: int = 20):
     """Basic BFS web crawler.
     Args:
         seed_url (str): The starting URL for crawling.
@@ -18,35 +21,39 @@ def crawl(seed_url: str, max_pages: int = 20):
 
     queue = [seed_url]
     visited = set()
+    async with aiohttp.ClientSession() as session:
 
-    while queue and len(visited) < max_pages:
-        url = normalize_url(queue.pop(0))
-        print("Queue size:", len(queue))
-        if url in visited:
-            continue
+        while queue and len(visited) < max_pages:
 
-        if get_domain(url) != allowed_domain:
-            continue
+            url = normalize_url(queue.pop(0))
 
-        print(f"\nCrawling: {url}")
-        html = fetch(url)
+            print("Queue size:", len(queue))
 
-        if not html:
-            continue
+            if url in visited:
+                continue
 
-        visited.add(url)
-        title = extract_title(html)
+            if get_domain(url) != allowed_domain:
+                continue
 
-        print(f"\nTitle: {title}")
+            print(f"\nCrawling: {url}")
+            html = await fetch(session, url)
 
-        links = extract_links(url, html)
-        for link in links:
-            normalized = normalize_url(link)
-            if normalized not in visited:
-                queue.append(normalized)
+            if not html:
+                continue
 
-        print(f"\nVisited: {len(visited)} pages")
+            visited.add(url)
+            title = extract_title(html)
+
+            print(f"\nTitle: {title}")
+            print(f"\nVisited: {len(visited)} pages")
+
+            links = extract_links(url, html)
+
+            for link in links:
+                normalized = normalize_url(link)
+                if normalized not in visited:
+                    queue.append(normalized)
 
 
 if __name__ == "__main__":
-    crawl("https://github.com/SxxAq", max_pages=10)
+    asyncio.run(crawl("https://github.com/SxxAq", max_pages=10))

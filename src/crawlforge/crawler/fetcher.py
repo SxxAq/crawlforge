@@ -1,8 +1,9 @@
-import httpx
+import aiohttp
 
-def fetch(url: str) -> str:
+
+async def fetch(session: aiohttp.ClientSession, url: str) -> str | None:
     """
-    Fetch the content of a URL.
+    Fetch the content of a URL ASynchronously.
 
     Args:
         url (str): The URL to fetch.
@@ -11,11 +12,13 @@ def fetch(url: str) -> str:
         str: The content of the URL.
     """
     try:
-        response = httpx.get(url)
-        response.raise_for_status()
-        return response.text
-    except httpx.RequestError as exc:
-        print(f"An error occurred while requesting {exc.request.url!r}.")
-    except httpx.HTTPStatusError as exc:
-        print(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}.")
+        async with session.get(url) as response:
+            if response.status != 200:
+                print(f"Failed to fetch {url}: HTTP {response.status}")
+                return ""
+
+            return await response.text()
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+
     return ""
