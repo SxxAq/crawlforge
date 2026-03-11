@@ -3,7 +3,11 @@ import aiohttp
 
 from crawlforge.crawler.fetcher import fetch
 from crawlforge.parser.html_parser import extract_links, extract_title
-from crawlforge.utils.url_utils import normalize_url, get_domain
+from crawlforge.utils.url_utils import normalize_url, get_domain, is_valid_url
+
+
+MAX_QUEUE_SIZE = 1000
+MAX_LINKS_PER_PAGE = 50
 
 
 async def worker(
@@ -17,6 +21,9 @@ async def worker(
 
         try:
             url = normalize_url(url)
+            if not is_valid_url(url):
+                queue.task_done()
+                continue
 
             # Thread-safe check and add to visited
             async with visited_lock:
@@ -41,12 +48,15 @@ async def worker(
             async with visited_lock:
                 print(f"\n[{name}] Visited: {len(visited)} pages")
 
-            links = extract_links(url, html)
+            links = extract_links(url, html)[:MAX_LINKS_PER_PAGE]
             for link in links:
                 normalized = normalize_url(link)
+                if not is_valid_url(normalized):
+                    continue
                 async with visited_lock:
                     if normalized not in visited and len(visited) < max_pages:
-                        await queue.put(normalized)
+                        if queue.qsize() < MAX_QUEUE_SIZE:
+                            await queue.put(normalized)
 
             queue.task_done()
         except asyncio.CancelledError:

@@ -42,3 +42,29 @@ def is_same_domain(url1: str, url2: str) -> bool:
         bool: True if both URLs belong to the same domain, False otherwise.
     """
     return get_domain(url1) == get_domain(url2)
+
+
+def is_valid_url(url: str) -> bool:
+
+    blocked_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".bmp",
+        ".svg",
+        ".webp",
+        ".mp4",
+        ".avi",
+        ".mov",
+        ".wmv",
+        ".flv",
+        ".mp3",
+        ".wav",
+        ".pdf",
+        ".css",
+        ".js",
+        ".zip",
+        ".ico",
+    }
+    return not any(url.lower().endswith(ext) for ext in blocked_extensions)
