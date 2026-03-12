@@ -27,6 +27,35 @@ URL Frontier (Queue)
    Data Storage
 ```
 
+## Final Architecture (Complete System)
+```
+                Seed URLs
+                     ↓
+               URL Scheduler
+                     ↓
+                   Redis
+            (Distributed Frontier)
+                     ↓
+      ---------------------------------
+      |               |               |
+   Worker A        Worker B        Worker C
+      |               |               |
+     Fetch           Fetch           Fetch
+      ↓               ↓               ↓
+     Parser          Parser          Parser
+      ↓               ↓               ↓
+   Clean Text      Clean Text      Clean Text
+      ↓               ↓               ↓
+   Embeddings       Embeddings       Embeddings
+      ↓               ↓               ↓
+           Vector Database (Search)
+                     ↓
+                 FastAPI
+                     ↓
+                  Clients
+```
+
+
 ### Workflow
 
 1. Seed URLs are added to the URL frontier.

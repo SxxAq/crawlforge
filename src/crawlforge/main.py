@@ -4,87 +4,47 @@ import aiohttp
 from crawlforge.crawler.fetcher import fetch
 from crawlforge.parser.html_parser import extract_links, extract_title
 from crawlforge.utils.url_utils import normalize_url, get_domain, is_valid_url
+from crawlforge.queue.redis_queue import pop_url, push_url, mark_visited, is_visited
 
 
 MAX_QUEUE_SIZE = 1000
 MAX_LINKS_PER_PAGE = 50
 
 
-async def worker(
-    name, session, queue, visited, visited_lock, allowed_domain, max_pages, stop_event
-):
-    while not stop_event.is_set():
-        try:
-            url = await asyncio.wait_for(queue.get(), timeout=1.0)
-        except asyncio.TimeoutError:
+async def worker(name, session, allowed_domain):
+    while True:
+        url = pop_url()
+        if not url:
+            await asyncio.sleep(1)
+            return
+        url = normalize_url(url)
+        if not is_valid_url(url):
             continue
-
-        try:
-            url = normalize_url(url)
-            if not is_valid_url(url):
-                queue.task_done()
+        if get_domain(url) != allowed_domain:
+            continue
+        if is_visited(url):
+            continue
+        print(f"[{name}] Crawling: {url}")
+        html = await fetch(session, url)
+        if not html:
+            continue
+        mark_visited(url)
+        title = extract_title(html)
+        print(f"\n[{name}] Title: {title}")
+        links = extract_links(url, html)[:MAX_LINKS_PER_PAGE]
+        for link in links:
+            normalized = normalize_url(link)
+            if not is_valid_url(normalized):
                 continue
-
-            # Thread-safe check and add to visited
-            async with visited_lock:
-                if url in visited or len(visited) >= max_pages:
-                    queue.task_done()
-                    continue
-                visited.add(url)
-
-            if get_domain(url) != allowed_domain:
-                queue.task_done()
-                continue
-
-            print(f"[{name}] Crawling: {url}")
-            html = await fetch(session, url)
-            if not html:
-                queue.task_done()
-                continue
-
-            title = extract_title(html)
-            print(f"\n[{name}] Title: {title}")
-
-            async with visited_lock:
-                print(f"\n[{name}] Visited: {len(visited)} pages")
-
-            links = extract_links(url, html)[:MAX_LINKS_PER_PAGE]
-            for link in links:
-                normalized = normalize_url(link)
-                if not is_valid_url(normalized):
-                    continue
-                async with visited_lock:
-                    if normalized not in visited and len(visited) < max_pages:
-                        if queue.qsize() < MAX_QUEUE_SIZE:
-                            await queue.put(normalized)
-
-            queue.task_done()
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            print(f"[{name}] Error: {e}")
-            queue.task_done()
+            if not is_visited(normalized):
+                push_url(normalized)
 
 
-async def crawl(seed_url: str, max_pages: int = 20, workers: int = 5):
-    """Basic BFS web crawler.
-    Args:
-        seed_url (str): The starting URL for crawling.
-        max_pages (int): The maximum number of pages to crawl.
-        workers (int): The number of concurrent workers to use.
-
-    Returns:
-        None
-    """
-
+async def crawl(seed_url: str, workers: int = 5):
     seed_url = normalize_url(seed_url)
     allowed_domain = get_domain(seed_url)
 
-    queue = asyncio.Queue()
-    await queue.put(seed_url)
-    visited = set()
-    visited_lock = asyncio.Lock()
-    stop_event = asyncio.Event()
+    push_url(seed_url)
 
     async with aiohttp.ClientSession() as session:
 
@@ -94,24 +54,14 @@ async def crawl(seed_url: str, max_pages: int = 20, workers: int = 5):
                 worker(
                     f"Worker-{i+1}",
                     session,
-                    queue,
-                    visited,
-                    visited_lock,
                     allowed_domain,
-                    max_pages,
-                    stop_event,
                 )
             )
             tasks.append(task)
-
-        await queue.join()
-
-        # Signal workers to stop gracefully
-        stop_event.set()
 
         # Wait for all workers to finish
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":
-    asyncio.run(crawl("https://github.com/SxxAq", max_pages=10))
+    asyncio.run(crawl("https://github.com/SxxAq"))
