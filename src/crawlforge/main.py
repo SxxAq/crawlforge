@@ -6,13 +6,14 @@ from crawlforge.parser.html_parser import extract_links, extract_title
 from crawlforge.utils.url_utils import normalize_url, get_domain, is_valid_url
 from crawlforge.queue.redis_queue import pop_url, push_url, mark_visited, is_visited
 from crawlforge.scheduler.domain_scheduler import DomainScheduler
-
+from crawlforge.parser.content_extractor import extract_content
+from crawlforge.storage.jsonl_writer import JSONLWriter
 
 MAX_QUEUE_SIZE = 1000
 MAX_LINKS_PER_PAGE = 50
 
 
-async def worker(name, session, allowed_domain, scheduler):
+async def worker(name, session, allowed_domain, scheduler, writer):
     print(f"[{name}] Worker started")
     while True:
         url = pop_url()
@@ -37,8 +38,16 @@ async def worker(name, session, allowed_domain, scheduler):
         if not html:
             continue
         mark_visited(url)
+
         title = extract_title(html)
+        content = extract_content(html)
         print(f"\n[{name}] Title: {title}")
+        print(f"[{name}] Content length: {len(content)} characters\n")
+
+        record = {"url": url, "title": title, "content": content}
+        await writer.write(record)
+        print(f"[{name}] Data written for: {url}")
+
         links = extract_links(url, html)[:MAX_LINKS_PER_PAGE]
         for link in links:
             normalized = normalize_url(link)
@@ -56,18 +65,14 @@ async def crawl(seed_url: str, workers: int = 5):
     print("Seed URL pushed:", seed_url)
 
     scheduler = DomainScheduler(crawl_delay=1.0)
+    writer = JSONLWriter("crawled_data.jsonl")
 
     async with aiohttp.ClientSession() as session:
 
         tasks = []
         for i in range(workers):
             task = asyncio.create_task(
-                worker(
-                    f"Worker-{i+1}",
-                    session,
-                    allowed_domain,
-                    scheduler,
-                )
+                worker(f"Worker-{i+1}", session, allowed_domain, scheduler, writer)
             )
             tasks.append(task)
 
@@ -76,4 +81,4 @@ async def crawl(seed_url: str, workers: int = 5):
 
 
 if __name__ == "__main__":
-    asyncio.run(crawl("https://github.com/SxxAq"))
+    asyncio.run(crawl("https://jmi.ac.in/"))
