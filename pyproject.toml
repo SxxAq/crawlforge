@@ -9,9 +9,11 @@ dependencies = [
     "aiohttp>=3.13.3",
     "beautifulsoup4>=4.14.3",
     "black>=26.1.0",
+    "faiss-cpu>=1.13.2",
     "httpx>=0.28.1",
     "readability-lxml>=0.8.4.1",
     "redis>=7.3.0",
+    "sentence-transformers>=5.3.0",
 ]
 
 [dependency-groups]

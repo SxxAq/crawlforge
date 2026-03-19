@@ -9,11 +9,13 @@ from crawlforge.scheduler.domain_scheduler import DomainScheduler
 from crawlforge.parser.content_extractor import extract_content
 from crawlforge.storage.jsonl_writer import JSONLWriter
 
+from crawlforge.ml.embedding_model import EmbeddingModel
+
 MAX_QUEUE_SIZE = 1000
 MAX_LINKS_PER_PAGE = 50
 
 
-async def worker(name, session, allowed_domain, scheduler, writer):
+async def worker(name, session, allowed_domain, scheduler, writer, embedding_model):
     print(f"[{name}] Worker started")
     while True:
         url = pop_url()
@@ -41,10 +43,19 @@ async def worker(name, session, allowed_domain, scheduler, writer):
 
         title = extract_title(html)
         content = extract_content(html)
+        embedding = embedding_model.embed(
+            content[:1000]
+        )  # Get embeddings for the first 1000 characters of content
+
         print(f"\n[{name}] Title: {title}")
         print(f"[{name}] Content length: {len(content)} characters\n")
 
-        record = {"url": url, "title": title, "content": content}
+        record = {
+            "url": url,
+            "title": title,
+            "content": content,
+            "embedding": embedding,
+        }
         await writer.write(record)
         print(f"[{name}] Data written for: {url}")
 
@@ -67,12 +78,21 @@ async def crawl(seed_url: str, workers: int = 5):
     scheduler = DomainScheduler(crawl_delay=1.0)
     writer = JSONLWriter("crawled_data.jsonl")
 
+    embedding_model = EmbeddingModel()  # Initialize the embedding model
+
     async with aiohttp.ClientSession() as session:
 
         tasks = []
         for i in range(workers):
             task = asyncio.create_task(
-                worker(f"Worker-{i+1}", session, allowed_domain, scheduler, writer)
+                worker(
+                    f"Worker-{i+1}",
+                    session,
+                    allowed_domain,
+                    scheduler,
+                    writer,
+                    embedding_model,
+                )
             )
             tasks.append(task)
 
