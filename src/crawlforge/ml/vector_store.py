@@ -1,19 +1,41 @@
+from typing import Any, List, Optional
+
 import faiss
 import numpy as np
 
 
 class VectorStore:
-    def __init__(self, dim=384):
+    """Vector store using FAISS for semantic search."""
+
+    def __init__(self, dim: int = 384) -> None:
         self.dim = dim
         self.index = faiss.IndexFlatL2(dim)
-        self.data = []
+        self.data: List[dict] = []
 
-    def add(self, embedding, metadata):
+    def add(self, embedding: List[float], metadata: dict) -> None:
+        """Add an embedding and its metadata to the store.
+        
+        Args:
+            embedding: List of float values representing the vector.
+            metadata: Dictionary containing associated data (url, title, content, etc).
+        """
         vector = np.array([embedding]).astype("float32")
         self.index.add(vector)
         self.data.append(metadata)
 
-    def search(self, query_embedding, top_k=5):
+    def search(self, query_embedding: List[float], top_k: int = 5) -> List[dict]:
+        """Search for the most similar embeddings.
+        
+        Args:
+            query_embedding: Query vector as a list of floats.
+            top_k: Number of top results to return.
+            
+        Returns:
+            List of metadata dictionaries for the top_k matches.
+        """
+        if not self.data:
+            return []
+            
         vector = np.array([query_embedding]).astype("float32")
         distances, indices = self.index.search(vector, top_k)
 
