@@ -45,6 +45,14 @@ def is_same_domain(url1: str, url2: str) -> bool:
 
 
 def is_valid_url(url: str) -> bool:
+    if not url:
+        return False
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if not parsed.netloc:
+        return False
 
     blocked_extensions = {
         ".jpg",
@@ -67,4 +75,5 @@ def is_valid_url(url: str) -> bool:
         ".zip",
         ".ico",
     }
-    return not any(url.lower().endswith(ext) for ext in blocked_extensions)
+    path = parsed.path.lower()
+    return not any(path.endswith(ext) for ext in blocked_extensions)

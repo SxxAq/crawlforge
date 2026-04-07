@@ -16,7 +16,10 @@ def extract_links(base_url: str, html: str) -> list[str]:
     soup = BeautifulSoup(html, "html.parser")
     links = []
     for tag in soup.find_all("a", href=True):
-        full_url = urljoin(base_url, tag["href"])
+        href = tag["href"].strip()
+        if not href or href.startswith("#"):
+            continue
+        full_url = urljoin(base_url, href)
         links.append(full_url)
     return links
 

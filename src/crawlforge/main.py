@@ -10,7 +10,7 @@ from crawlforge.queue.redis_queue import (
     mark_visited,
     is_visited,
     push_content,
-    pop_content,
+    content_queue_size,
 )
 from crawlforge.scheduler.domain_scheduler import DomainScheduler
 from crawlforge.parser.content_extractor import extract_content
@@ -20,22 +20,23 @@ MAX_QUEUE_SIZE = 1000
 MAX_LINKS_PER_PAGE = 50
 
 
-async def worker(name, session, allowed_domain, scheduler, stop_event):
+async def worker(name, session, scheduler, writer, stop_event):
     print(f"[{name}] Worker started")
     while not stop_event.is_set():
         url = pop_url()
         if not url:
             await asyncio.sleep(1)
             continue
+
         url = normalize_url(url)
         print(f"[{name}] Popped URL: {url}")
+
         if not is_valid_url(url):
             continue
+
         if is_visited(url):
             continue
-        mark_visited(url)
-        if get_domain(url) != allowed_domain:
-            continue
+
         print(f"[{name}] Crawling: {url}")
 
         domain = get_domain(url)
@@ -44,6 +45,7 @@ async def worker(name, session, allowed_domain, scheduler, stop_event):
         html = await fetch(session, url)
         if not html:
             continue
+
         mark_visited(url)
 
         title = extract_title(html)
@@ -52,6 +54,7 @@ async def worker(name, session, allowed_domain, scheduler, stop_event):
         print(f"[{name}] Content length: {len(content)} characters\n")
 
         record = {"url": url, "title": title, "content": content}
+        await writer.write(record)
         push_content(record)
         print(f"[{name}] Data written for: {url}")
 
@@ -64,46 +67,37 @@ async def worker(name, session, allowed_domain, scheduler, stop_event):
                 push_url(normalized)
 
 
-async def crawl(seed_url: str, workers: int = 5, max_duration: int = 300):
-    """Start a web crawler with multiple workers.
-    
-    Args:
-        seed_url: The starting URL for crawling.
-        workers: Number of concurrent workers.
-        max_duration: Maximum crawling duration in seconds.
-    """
-    seed_url = normalize_url(seed_url)
-    allowed_domain = get_domain(seed_url)
-    print("Starting crawler...")
-    push_url(seed_url)
-    print("Seed URL pushed:", seed_url)
+async def crawl(workers: int = 5, max_duration: int = 300):
+    """Run crawler workers that consume URLs from Redis."""
+    print("Starting crawler workers...")
 
     scheduler = DomainScheduler(crawl_delay=1.0)
     writer = JSONLWriter("crawled_data.jsonl")
     stop_event = asyncio.Event()
 
     async def stop_after_duration():
-        """Stop the crawler after max_duration seconds."""
         await asyncio.sleep(max_duration)
         stop_event.set()
 
     async with aiohttp.ClientSession() as session:
-        tasks = []
-        
-        # Add duration timer
-        tasks.append(asyncio.create_task(stop_after_duration()))
-        
+        tasks = [asyncio.create_task(stop_after_duration())]
+
         for i in range(workers):
             task = asyncio.create_task(
-                worker(f"Worker-{i+1}", session, allowed_domain, scheduler, stop_event)
+                worker(
+                    f"Worker-{i+1}",
+                    session,
+                    scheduler,
+                    writer,
+                    stop_event,
+                )
             )
             tasks.append(task)
 
-        # Wait for all workers to finish
         await asyncio.gather(*tasks, return_exceptions=True)
-    
-    print(f"Crawler stopped. Total records in queue: {len(pop_content()) or 0}")
+
+    print(f"Crawler stopped. Total records in queue: {content_queue_size()}")
 
 
 if __name__ == "__main__":
-    asyncio.run(crawl("https://jmi.ac.in/"))
+    asyncio.run(crawl())

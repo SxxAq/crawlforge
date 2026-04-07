@@ -43,3 +43,8 @@ def pop_content() -> Optional[dict]:
     """Pop a content record from the Redis content queue."""
     record_json = r.rpop(CONTENT_QUEUE_KEY)
     return json.loads(record_json) if record_json else None
+
+
+def content_queue_size() -> int:
+    """Get the current size of the Redis content queue."""
+    return r.llen(CONTENT_QUEUE_KEY)

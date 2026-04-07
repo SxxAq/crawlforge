@@ -4,7 +4,7 @@ import aiofiles
 
 
 class JSONLWriter:
-    def __init__(self, file_path="crawled_data.jsonl"):
+    def __init__(self, file_path: str):
         self.file_path = file_path
         self.lock = asyncio.Lock()
 

@@ -10,26 +10,38 @@ from crawlforge.utils.url_utils import is_valid_url
 app = FastAPI()
 
 model = EmbeddingModel()
-store = build_index()
+store = None
 
 
 class CrawlRequest(BaseModel):
     url: str
 
 
+def safe_build_index():
+    try:
+        return build_index()
+    except FileNotFoundError:
+        print("No index found yet, Running in empty mode.")
+        return None
+    except Exception as e:
+        print(f"index load failed: {e}")
+        return None
+
+
 async def reload_store():
+    global store
     while True:
         await asyncio.sleep(30)
-        try:
-            global store
-            store = build_index()
-            print("✓ Store reloaded")
-        except Exception as e:
-            print(f"✗ Reload error: {e}")
+        new_store = safe_build_index()
+        if new_store is not None:
+            store = new_store
+            print("Store reloaded")
 
 
 @app.on_event("startup")
 async def startup():
+    global store
+    store = safe_build_index()
     asyncio.create_task(reload_store())
 
 
@@ -54,6 +66,9 @@ async def search(query: str):
     if not query or len(query.strip()) < 2:
         raise HTTPException(400, "Query too short")
 
+    if store is None:
+        return {"results": [], "count": 0, "message": "index not ready yet."}
+
     try:
         emb = model.embed(query)
         results = store.search(emb, top_k=5)
@@ -75,11 +90,11 @@ async def search(query: str):
 
 @app.post("/reload")
 async def reload_index():
-    try:
-        global store
-        store = build_index()
-        return {"message": "Reloaded"}
-    except FileNotFoundError:
-        raise HTTPException(404, "Data not found")
-    except Exception as e:
-        raise HTTPException(500, f"Reload error: {e}")
+    global store
+
+    new_store = safe_build_index()
+
+    if new_store is None:
+        raise HTTPException(404, "Index not available yet.")
+    store = new_store
+    return {"message": "Reloaded"}
