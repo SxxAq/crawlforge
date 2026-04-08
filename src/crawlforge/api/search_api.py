@@ -1,6 +1,7 @@
 import asyncio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 
 from crawlforge.ml.embedding_model import EmbeddingModel
 from crawlforge.ml.build_index import build_index
@@ -57,7 +58,7 @@ async def crawl(req: CrawlRequest):
             "url": req.url,
             "queue_position": queue_size(),
         }
-    except ConnectionError:
+    except RedisError:
         raise HTTPException(503, "Queue unavailable")
 
 

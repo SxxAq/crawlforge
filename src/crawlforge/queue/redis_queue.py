@@ -1,12 +1,14 @@
 import json
 from typing import Optional
-
+import os
 import redis
 
 REDIS_QUEUE_KEY = "crawlforge_queue"
 CONTENT_QUEUE_KEY = "content_queue"
 VISITED_SET_KEY = "visited_urls"
-r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+host = os.getenv("REDIS_HOST", "localhost")
+port = int(os.getenv("REDIS_PORT", "6379"))
+r = redis.Redis(host=host, port=port, decode_responses=True)
 
 
 def push_url(url: str) -> None:
