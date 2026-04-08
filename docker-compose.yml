@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: crawlforge-redis
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    container_name: crawlforge-api
+    command: uv run uvicorn crawlforge.api.search_api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+
+  crawler:
+    build: .
+    container_name: crawlforge-crawler
+    command: uv run python -m crawlforge.main
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+
+  embedder:
+    build: .
+    container_name: crawlforge-embedder
+    command: uv run python -m crawlforge.ml.embedding_worker
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
