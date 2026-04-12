@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
@@ -7,8 +7,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 
 COPY pyproject.toml uv.lock ./
-RUN pip install uv && uv sync --frozen --no-dev
-
 COPY . .
+RUN uv sync --frozen --no-dev
 
-CMD ["python", "-m", "crawlforge.main"]
+CMD ["uv", "run", "python", "-m", "crawlforge.main"]

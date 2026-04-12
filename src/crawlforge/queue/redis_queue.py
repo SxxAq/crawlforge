@@ -1,5 +1,5 @@
 import json
-from typing import Optional
+from typing import Optional, cast
 import os
 import redis
 
@@ -18,12 +18,12 @@ def push_url(url: str) -> None:
 
 def pop_url() -> Optional[str]:
     """Pop a URL from the Redis queue."""
-    return r.rpop(REDIS_QUEUE_KEY)
+    return cast(Optional[str], r.rpop(REDIS_QUEUE_KEY))
 
 
 def queue_size() -> int:
     """Get the current size of the Redis queue."""
-    return r.llen(REDIS_QUEUE_KEY)
+    return cast(int, r.llen(REDIS_QUEUE_KEY))
 
 
 def mark_visited(url: str) -> None:
@@ -33,7 +33,7 @@ def mark_visited(url: str) -> None:
 
 def is_visited(url: str) -> bool:
     """Check if a URL has been visited."""
-    return r.sismember(VISITED_SET_KEY, url)
+    return bool(r.sismember(VISITED_SET_KEY, url))
 
 
 def push_content(record: dict) -> None:
@@ -43,10 +43,12 @@ def push_content(record: dict) -> None:
 
 def pop_content() -> Optional[dict]:
     """Pop a content record from the Redis content queue."""
-    record_json = r.rpop(CONTENT_QUEUE_KEY)
-    return json.loads(record_json) if record_json else None
+    record_json = cast(Optional[str], r.rpop(CONTENT_QUEUE_KEY))
+    if record_json is None:
+        return None
+    return json.loads(record_json)
 
 
 def content_queue_size() -> int:
     """Get the current size of the Redis content queue."""
-    return r.llen(CONTENT_QUEUE_KEY)
+    return cast(int, r.llen(CONTENT_QUEUE_KEY))
