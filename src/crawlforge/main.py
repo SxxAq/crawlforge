@@ -72,7 +72,7 @@ async def crawl(workers: int = 5, max_duration: int = 300):
     print("Starting crawler workers...")
 
     scheduler = DomainScheduler(crawl_delay=1.0)
-    writer = JSONLWriter("crawled_data.jsonl")
+    writer = JSONLWriter("data/crawled_data.jsonl")
     stop_event = asyncio.Event()
 
     async def stop_after_duration():

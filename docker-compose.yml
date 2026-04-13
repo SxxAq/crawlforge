@@ -17,6 +17,8 @@ services:
       REDIS_PORT: 6379
     depends_on:
       - redis
+    volumes:
+      - ./data:/app/data
 
   crawler:
     build:
@@ -30,6 +32,8 @@ services:
       REDIS_PORT: 6379
     depends_on:
       - redis
+    volumes:
+      - ./data:/app/data
 
   embedder:
     build:
@@ -43,3 +47,5 @@ services:
       REDIS_PORT: 6379
     depends_on:
       - redis
+    volumes:
+      - ./data:/app/data

@@ -17,7 +17,7 @@ async def embedding_worker(name: str, stop_event: asyncio.Event) -> None:
     """
     print(f"[{name}] Embedding worker started")
     model = EmbeddingModel()
-    writer = JSONLWriter("embedded_data.jsonl")
+    writer = JSONLWriter("data/embedded_data.jsonl")
 
     while not stop_event.is_set():
         record = pop_content()

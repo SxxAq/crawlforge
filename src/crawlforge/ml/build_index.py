@@ -4,7 +4,7 @@ import os
 from crawlforge.ml.vector_store import VectorStore
 
 
-def build_index(file_path: str = "embedded_data.jsonl") -> VectorStore:
+def build_index(file_path: str = "data/embedded_data.jsonl") -> VectorStore:
     """Build a vector store index from crawled data.
 
     Args:

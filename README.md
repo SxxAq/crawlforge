@@ -1,69 +1,70 @@
 # CrawlForge
 
 **CrawlForge** is a distributed web crawling system designed to efficiently collect and process web data at scale.
-It uses asynchronous workers, a centralized URL frontier, and modular parsing pipelines to enable scalable crawling across multiple processes or machines.
 
-The project demonstrates core backend and data engineering concepts including **distributed systems, asynchronous networking, queue-based task distribution, and data pipelines**. It is designed to be extensible into applications such as **dataset generation, search indexing, and semantic retrieval systems**.
+It leverages asynchronous workers, a Redis-based URL frontier, and a decoupled pipeline for crawling, content extraction, and embedding generation. This architecture enables scalable processing across multiple processes or machines while maintaining clear separation between I/O-bound and compute-bound tasks.
+
+The project demonstrates core backend and data engineering concepts such as **distributed systems, asynchronous networking, queue-based task distribution, and data pipelines**. It is designed to be extensible for applications like **dataset generation, search indexing, and semantic retrieval systems**.
 
 ---
 
 ## Architecture
 
-The crawler follows a distributed worker architecture where multiple workers fetch and process pages concurrently while sharing a central URL queue.
+CrawlForge uses a **three-stage distributed pipeline** with Redis as the central broker and FAISS for semantic search:
 
 ```
-Seed URLs
-    |
-URL Scheduler
-    |
-URL Frontier (Queue)
-    |
-+-----------+-----------+-----------+
-| Worker 1  | Worker 2  | Worker 3  |
-+-----------+-----------+-----------+
-        |
-     Parser
-        |
-   Data Storage
-```
+┌──────────────────────────────────────────────────────────────┐
+│                     Redis                                    │
+│  (URL Queue + Content Queue + Visited Set)                  │
+└──────────────┬─────────────────────────┬────────────────────┘
+               │                         │
+        ┌──────▼─────────┐    ┌─────────▼──────────┐
+        │  Crawler Svc   │    │  Embedder Svc      │
+        │                │    │                    │
+        │ - Pop URL      │    │ - Pop content      │
+        │ - Fetch page   │    │ - Generate embed   │
+        │ - Extract text │    │ - Write JSONL      │
+        │ - Push content │    │                    │
+        └────────────────┘    └─────────┬──────────┘
+                                        │
+                                ┌───────▼────────┐
+                                │  embedded_data │
+                                │      .jsonl    │
+                                └───────┬────────┘
+                                        │
+                                ┌───────▼────────┐
+        ┌──────────────────────▶│  FAISS Index   │
+        │                       └────────────────┘
+        │                              │
+        └──────────────────────────────┘
+       (Index reloaded every 30s)
 
-## Final Architecture (Complete System)
+    ┌──────────────────────┐
+    │    API Service       │
+    │  (port 8000)         │
+    │  - /crawl (POST)     │
+    │  - /search (GET)     │
+    │  - /reload (POST)    │
+    └──────────────────────┘
+           │
+        Client
 ```
-                Seed URLs
-                     ↓
-               URL Scheduler
-                     ↓
-                   Redis
-            (Distributed Frontier)
-                     ↓
-      ---------------------------------
-      |               |               |
-   Worker A        Worker B        Worker C
-      |               |               |
-     Fetch           Fetch           Fetch
-      ↓               ↓               ↓
-     Parser          Parser          Parser
-      ↓               ↓               ↓
-   Clean Text      Clean Text      Clean Text
-      ↓               ↓               ↓
-   Embeddings       Embeddings       Embeddings
-      ↓               ↓               ↓
-           Vector Database (Search)
-                     ↓
-                 FastAPI
-                     ↓
-                  Clients
-```
-
 
 ### Workflow
 
-1. Seed URLs are added to the URL frontier.
-2. Workers fetch URLs from the queue.
-3. Pages are downloaded asynchronously.
-4. HTML content is parsed to extract links and metadata.
-5. Newly discovered links are pushed back into the queue.
-6. Extracted data is stored for downstream processing.
+1. **Crawl Phase**: Seed URLs → URL queue → Crawler service fetches pages concurrently
+2. **Parse Phase**: HTML parsed → main text extracted → pushed to content queue
+3. **Embed Phase**: Embedder service reads content queue → generates 384-dim vectors → writes to `data/embedded_data.jsonl`
+4. **Index Phase**: Every 30s, API reloads FAISS index from embedded_data.jsonl
+5. **Search Phase**: User queries API → semantic search via FAISS → ranked results returned
+
+### Data Flow
+
+- **URL Queue** (Redis): Stores frontier URLs to crawl
+- **Content Queue** (Redis): Stores extracted text from pages
+- **crawled_data.jsonl**: Raw HTML + metadata from crawler (optional storage)
+- **embedded_data.jsonl**: Embeddings + metadata for semantic search
+- **FAISS Index**: In-memory vector index for fast similarity search
 
 ---
 
@@ -73,86 +74,134 @@ URL Frontier (Queue)
 crawlforge/
 │
 ├── pyproject.toml
+├── docker-compose.yml
+├── Dockerfile
+├── DEMO.md
 ├── README.md
-├── .python-version
 │
-└── src/
-    └── crawlforge/
-        ├── main.py
-        │
-        ├── crawler/
-        │   └── fetcher.py
-        │
-        ├── parser/
-        │   └── html_parser.py
-        │
-        └── utils/
-            └── url_utils.py
+├── data/                    # Persistent volume (synced from containers)
+│   ├── crawled_data.jsonl
+│   └── embedded_data.jsonl
+│
+└── src/crawlforge/
+    ├── main.py              # Crawler entry point
+    ├── seed_url.py          # Interactive URL seeding
+    │
+    ├── api/
+    │   └── search_api.py    # FastAPI server (/crawl, /search, /reload)
+    │
+    ├── crawler/
+    │   └── fetcher.py       # Async HTTP fetch with User-Agent
+    │
+    ├── parser/
+    │   ├── html_parser.py   # Extract links, title
+    │   └── content_extractor.py  # Extract main content
+    │
+    ├── queue/
+    │   └── redis_queue.py   # Redis URL queue operations
+    │
+    ├── scheduler/
+    │   └── domain_scheduler.py  # Rate limiting per domain
+    │
+    ├── storage/
+    │   └── jsonl_writer.py  # Async JSONL file writing
+    │
+    ├── ml/
+    │   ├── embedding_model.py   # sentence-transformers wrapper
+    │   ├── embedding_worker.py  # Async embedding processing
+    │   ├── build_index.py       # Load embeddings → FAISS
+    │   ├── vector_store.py      # FAISS wrapper
+    │   └── search.py            # CLI semantic search
+    │
+    └── utils/
+        └── url_utils.py     # URL normalization, validation
 ```
 
 ---
 
 ## Tech Stack
 
-**Language**
+**Language & Async**
+- Python 3.12
+- asyncio, aiohttp
 
-- Python
-
-**Networking**
-
-- httpx
-
-**HTML Parsing**
-
+**Web Parsing**
 - BeautifulSoup
+- readability-lxml
 
-**Planned Infrastructure**
-
-- Redis (URL frontier / queue)
-- PostgreSQL (content storage)
+**Infrastructure**
+- Redis (URL frontier & queue)
 - FastAPI (search API)
-- Docker (containerization)
+- Docker & Docker Compose
+
+**ML/Search**
+- sentence-transformers (embeddings)
+- FAISS (vector indexing)
 
 ---
 
 ## Getting Started
 
+### Docker (Recommended)
+
 Clone the repository:
 
-```
-git clone https://github.com/<your-username>/crawlforge.git
+```bash
+git clone https://github.com/SxxAq/crawlforge.git
 cd crawlforge
 ```
 
-Install dependencies using **uv**:
+Start all services:
 
+```bash
+mkdir -p data
+docker compose up
 ```
+
+In another terminal, queue a URL:
+
+```bash
+curl -X POST http://localhost:8000/crawl \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://en.wikipedia.org/wiki/Machine_learning"}'
+```
+
+Wait 30-60 seconds for embeddings, then search:
+
+```bash
+curl "http://localhost:8000/search?query=machine+learning"
+```
+
+See [DEMO.md](./DEMO.md) for step-by-step walkthrough.
+
+### Local Development (requires Redis)
+
+Install dependencies:
+
+```bash
 uv sync
 ```
 
-Run the crawler:
+Start Redis (separate terminal):
 
+```bash
+redis-server
 ```
-uv run python src/crawlforge/main.py
+
+Run crawler:
+
+```bash
+python -m crawlforge.main
 ```
 
----
+Run embedder (separate terminal):
 
-## Roadmap
+```bash
+python -m crawlforge.ml.embedding_worker
+```
 
-Planned improvements include:
+Run API (separate terminal):
 
-- asynchronous crawling with `aiohttp`
-- Redis-based distributed URL scheduling
-- global deduplication system
-- domain-aware rate limiting
-- content storage in PostgreSQL
-- vector embeddings for semantic search
-- FastAPI search interface
-- Docker-based distributed deployment
-
----
-
-## License
-
-MIT License
+```bash
+uvicorn crawlforge.api.search_api:app --reload
+```
